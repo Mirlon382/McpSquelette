@@ -2,7 +2,6 @@
 
 Serveur **Model Context Protocol (MCP)** pour interroger l’**API Sirene V3.11** de l’Insee depuis un assistant IA compatible MCP. Le modèle peut traduire une demande en langage naturel en appels aux outils de recherche, de comptage, d’analyse et d’export.
 
-> Projet personnel non officiel. Ce dépôt n’est ni développé ni maintenu par l’Insee. Les données et résultats restent soumis aux règles et quotas de l’API Sirene.
 
 ## Fonctionnalités
 
