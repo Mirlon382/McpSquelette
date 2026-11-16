@@ -10,7 +10,7 @@ from fastmcp.server.middleware.logging import LoggingMiddleware
 from fastmcp.server.middleware.rate_limiting import SlidingWindowRateLimitingMiddleware
 from fastmcp.server.middleware.timing import TimingMiddleware
 
-#from .lifespan import build_lifespan
+# from .lifespan import build_lifespan
 from .logging import build_logging_config, configure_logging
 from .settings import load_settings
 from .tools import register_tools
@@ -25,16 +25,20 @@ logger = logging.getLogger(__name__)
 
 # language=Markdown
 INSTRUCTIONS = dedent("""
-    To edit
+    These tools read data and return it; none of them change anything on the server's side.
+
+    Call a tool only when the request needs data you do not already have, and fill every argument
+    the input schema marks as required. A failed call answers with a message that begins with an
+    error code in brackets: read the text, fix the argument it names, and only then call again.
 """).strip()
 
 mcp = FastMCP(
-    "INSEE-mcp-server",
+    settings.mcp_name,
     instructions=INSTRUCTIONS,
     # Only AppToolError messages reach the caller; anything else is a bug and is replaced
     # by a generic message.
     mask_error_details=True,
-    #lifespan=build_lifespan(settings),
+    # lifespan=build_lifespan(settings),
 )
 
 register_tools(mcp, settings)
@@ -76,6 +80,7 @@ app = mcp.http_app(
     allowed_hosts=settings.allowed_hosts,
     allowed_origins=settings.allowed_origins,
 )
+
 
 def main() -> None:
     uvicorn.run(

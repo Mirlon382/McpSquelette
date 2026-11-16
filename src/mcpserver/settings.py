@@ -1,9 +1,17 @@
-"""Every value this server can be configured with."""
+"""Every value this server can be configured with.
+
+Names are read from the environment in upper case (`MCP_PORT`) and from `.env` beside the working
+directory. Unknown variables are ignored, so a stale key never prevents the server from starting.
+"""
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    # MCP server -------------------------------------------------------------------------------------------------------
+    # Sent to the client in the handshake, and shown in most inspector UIs.
+    mcp_name: str = "McpSquelette"
+
     # HTTP server ------------------------------------------------------------------------------------------------------
     mcp_host: str = "0.0.0.0"
     mcp_port: int = 8000
@@ -17,17 +25,12 @@ class Settings(BaseSettings):
     # Accepts addresses, CIDR networks and literals. Widening this lets callers forge their own address.
     trusted_proxy_hosts: list[str] = ["127.0.0.1"]
 
-
-
-    # services ---------------------------------------------------------------------------------------------------
-
     # Rate limiting ----------------------------------------------------------------------------------------------------
     rate_limit_max_requests: int = 100
     rate_limit_window_minutes: int = 1
 
     # Logging ----------------------------------------------------------------------------------------------------------
     log_level: str = "INFO"
-
 
     model_config = SettingsConfigDict(
         env_file=".env",

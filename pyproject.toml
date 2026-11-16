@@ -1,7 +1,7 @@
 [project]
 name = "mcpserver"
 version = "0.1.0"
-description = "MCP server (edit this)"
+description = "FastMCP v4 skeleton: write your tools and models, get a deployed MCP server"
 requires-python = ">=3.12"
 dependencies = [
     "fastmcp>=4.0.0",
@@ -62,4 +62,5 @@ docstring-code-format = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 

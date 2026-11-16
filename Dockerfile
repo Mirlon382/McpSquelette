@@ -57,6 +57,8 @@ EXPOSE 8000
 
 # A TCP connect, not an HTTP request: the MCP endpoint answers 400 without a session handshake, so an
 # HTTP check would fail on a healthy server. The start period covers the lifespan opening its clients.
+# Podman's default OCI format drops HEALTHCHECK entirely: build with `podman build --format docker`
+# to keep it.
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
     CMD python -c "import os, socket; socket.create_connection(('127.0.0.1', int(os.environ.get('MCP_PORT', 8000))), 2).close()"
 
