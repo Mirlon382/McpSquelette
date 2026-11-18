@@ -1,3 +1,5 @@
+![](./doc/logo_McpSquelette.png)
+
 # McpSquelette 🦴
 
 **"Just the tools."**
