@@ -1,4 +1,4 @@
-![](./doc/Logo_McpSquelette.png)
+![McpSquelette](./doc/Logo_McpSquelette_idle.webp)
 
 # McpSquelette 🦴
 
