@@ -4,6 +4,13 @@
 .venv/
 __pycache__/
 *.pyc
+*.pyo
 exports/
 *.log
 *.bak
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+.DS_Store
