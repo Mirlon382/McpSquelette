@@ -1,18 +1,23 @@
-"""Entrypoint: builds the settings, the clients and the MCP application, then serves it over HTTP."""
+"""Entrypoint: builds the settings, the lifespan and the MCP application, then serves it.
+
+Two transports, one command: `MCP_TRANSPORT=http` (the default) serves Streamable HTTP on `/mcp`;
+`MCP_TRANSPORT=stdio` runs the same tools over pipes, for a client that launches the process.
+"""
 
 import logging
 from textwrap import dedent
 
 import uvicorn
 from fastmcp import FastMCP
+from fastmcp.server.lifespan import Lifespan
 from fastmcp.server.middleware.error_handling import ErrorHandlingMiddleware
 from fastmcp.server.middleware.logging import LoggingMiddleware
 from fastmcp.server.middleware.rate_limiting import SlidingWindowRateLimitingMiddleware
 from fastmcp.server.middleware.timing import TimingMiddleware
 
-# from .lifespan import build_lifespan
+from .lifespan import build_lifespan
 from .logging import build_logging_config, configure_logging
-from .settings import load_settings
+from .settings import Settings, load_settings
 from .tools import register_tools
 from .utils.client_host import resolve_client_host
 
@@ -20,61 +25,70 @@ settings = load_settings()
 configure_logging(settings.log_level)
 logger = logging.getLogger(__name__)
 
-# Sent to the client in the handshake. Only what belongs to no single tool: which tool to call, and when,
-# is in the tool descriptions, where it reaches the model even when a client drops these instructions.
-
-# language=Markdown
+# Sent to the client in the handshake. Only what belongs to no single tool: which tool to call, and
+# when, is in the tool descriptions, where it reaches the model even when a client drops these
+# instructions. Keep this text true for whatever tools you register.
 INSTRUCTIONS = dedent("""
-    These tools read data and return it; none of them change anything on the server's side.
+    Call a tool only when the request needs something you do not already have, and fill every
+    argument the input schema marks as required. Each tool's description says whether it only
+    reads or also changes something on this server.
 
-    Call a tool only when the request needs data you do not already have, and fill every argument
-    the input schema marks as required. A failed call answers with a message that begins with an
-    error code in brackets: read the text, fix the argument it names, and only then call again.
+    A failed call answers with a message that begins with an error code in brackets: read the
+    text, fix the argument it names, and only then call again.
 """).strip()
 
-mcp = FastMCP(
-    settings.mcp_name,
-    instructions=INSTRUCTIONS,
-    # Only AppToolError messages reach the caller; anything else is a bug and is replaced
-    # by a generic message.
-    mask_error_details=True,
-    # lifespan=build_lifespan(settings),
-)
 
-register_tools(mcp, settings)
+def create_mcp(app_settings: Settings, lifespan: Lifespan | None = None) -> FastMCP:
+    """Build the application.
 
-# Order matters: error handling first so it sees the whole chain, logging last so it records what ran.
-# Each middleware logs under its own `fastmcp.*` logger; set levels there to tune the output.
-# None of them logs how many results a tool returned. If empty results become hard to diagnose, add an
-# `on_call_tool` middleware that inspects the ToolResult, or have the tool report it with `ctx.info`.
-mcp.add_middleware(
-    # include_traceback puts the original cause in the server log, which is the only place it is
-    # recoverable. transform_errors would promote our ToolErrors to JSON-RPC protocol errors labelled
-    # "Internal error", losing is_error and the message the caller is meant to act on.
-    ErrorHandlingMiddleware(
-        transform_errors=False,
-        include_traceback=True,
-    ),
-)
-mcp.add_middleware(
-    SlidingWindowRateLimitingMiddleware(
-        max_requests=settings.rate_limit_max_requests,
-        window_minutes=settings.rate_limit_window_minutes,
-        get_client_id=resolve_client_host,
-    ),
-)
-mcp.add_middleware(
-    TimingMiddleware(),
-)
-mcp.add_middleware(
-    LoggingMiddleware(),
-)
+    Tests call this with their own lifespan so no test reaches the network; production calls it
+    with none and gets `build_lifespan` with the real settings.
+    """
+    server = FastMCP(
+        app_settings.mcp_name,
+        instructions=INSTRUCTIONS,
+        # Only AppToolError messages reach the caller; anything else is a bug and is replaced
+        # by a generic message.
+        mask_error_details=True,
+        lifespan=lifespan if lifespan is not None else build_lifespan(app_settings),
+    )
 
-if settings.allowed_hosts == ["*"]:
+    register_tools(server, app_settings)
+
+    # Order matters: error handling first so it sees the whole chain, logging last so it records
+    # what ran. Each middleware logs under its own `fastmcp.*` logger; set levels there to tune the
+    # output. None of them logs how many results a tool returned. If empty results become hard to
+    # diagnose, add an `on_call_tool` middleware that inspects the ToolResult, or have the tool
+    # report it with `ctx.info`.
+    server.add_middleware(
+        # include_traceback puts the original cause in the server log, which is the only place it
+        # is recoverable. transform_errors would promote our ToolErrors to JSON-RPC protocol errors
+        # labelled "Internal error", losing is_error and the message the caller is meant to act on.
+        ErrorHandlingMiddleware(
+            transform_errors=False,
+            include_traceback=True,
+        ),
+    )
+    server.add_middleware(
+        SlidingWindowRateLimitingMiddleware(
+            max_requests=app_settings.rate_limit_max_requests,
+            window_minutes=app_settings.rate_limit_window_minutes,
+            get_client_id=resolve_client_host,
+        ),
+    )
+    server.add_middleware(TimingMiddleware())
+    server.add_middleware(LoggingMiddleware())
+    return server
+
+
+mcp = create_mcp(settings)
+
+if settings.mcp_transport == "http" and settings.allowed_hosts == ["*"]:
     logger.warning("allowed_hosts is ['*']. Set ALLOWED_HOSTS before exposing the server publicly.")
 
-# Enforced rather than "auto": this server is published under a real hostname, so it should
-# check the one it was reached by instead of leaving the decision to a heuristic.
+# Enforced rather than "auto": this server is published under a real hostname, so it should check
+# the one it was reached by instead of leaving the decision to a heuristic. Kept at module level so
+# `uvicorn mcpserver.server:app` serves it too.
 app = mcp.http_app(
     host_origin_protection=True,
     allowed_hosts=settings.allowed_hosts,
@@ -83,6 +97,11 @@ app = mcp.http_app(
 
 
 def main() -> None:
+    if settings.mcp_transport == "stdio":
+        # The client owns the process: no port, no host guard, and no banner on the pipe.
+        mcp.run(transport="stdio", show_banner=False)
+        return
+
     uvicorn.run(
         app,
         host=settings.mcp_host,

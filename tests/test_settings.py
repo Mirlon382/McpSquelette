@@ -8,8 +8,16 @@ def test_defaults_are_safe_to_start_locally() -> None:
 
     assert settings.mcp_port == 8000
     assert settings.mcp_name == "McpSquelette"
+    assert settings.mcp_transport == "http"
     assert settings.rate_limit_max_requests == 100
     assert settings.allowed_origins == []
+    assert settings.http_timeout_seconds == 10.0
+
+
+def test_the_transport_is_read_from_the_environment(monkeypatch) -> None:
+    monkeypatch.setenv("MCP_TRANSPORT", "stdio")
+
+    assert Settings(_env_file=None).mcp_transport == "stdio"
 
 
 def test_lists_are_read_from_json_environment_values(monkeypatch) -> None:

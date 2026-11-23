@@ -11,10 +11,11 @@ from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from ..settings import Settings
-from .myservice.tools import tool1
 
 # A group of tools lives in its own package: `tools/<yourservice>/tools.py`, then import from it
 # here. One file per tool also works (`tools/myservice/mytool.py`) -- pick one and stay with it.
+from .notes.tools import notes_add, notes_list
+from .wikipedia.tools import wikipedia_summary
 
 # Read-only: the tool answers a question and changes nothing, so a client may call it freely.
 READ_ONLY = ToolAnnotations(
@@ -22,6 +23,15 @@ READ_ONLY = ToolAnnotations(
     destructiveHint=False,
     openWorldHint=False,
     idempotentHint=True,
+)
+
+# Write: the tool keeps what it is given. destructiveHint is about losing data, not about
+# changing it -- adding a note destroys nothing, so it stays False; a delete tool would set True.
+WRITE = ToolAnnotations(
+    readOnlyHint=False,
+    destructiveHint=False,
+    openWorldHint=False,
+    idempotentHint=False,
 )
 
 
@@ -33,4 +43,7 @@ def register_tools(mcp: FastMCP, settings: Settings) -> None:
     guarantees, unlike tag or visibility filtering, which a later call can undo.
     """
 
-    mcp.tool(tool1, annotations=READ_ONLY)
+    # Delete the next three lines and the two example packages once your own tools are in.
+    mcp.tool(wikipedia_summary, annotations=READ_ONLY)
+    mcp.tool(notes_add, annotations=WRITE)
+    mcp.tool(notes_list, annotations=READ_ONLY)

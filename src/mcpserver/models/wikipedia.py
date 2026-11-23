@@ -1,39 +1,27 @@
-"""Pydantic schemas for the skeleton's tools.
+"""Schemas for the Wikipedia examples.
 
 Inputs are `Annotated` aliases so the description and the examples travel with the type, and every
 tool answers with a `BaseModel` rather than a dict: FastMCP derives the output schema from it, and
 each field's description is what the model reads when it decides how to use a result.
 """
 
-from enum import StrEnum
 from typing import Annotated
 
 from pydantic import BaseModel, Field
-
-MAX_RESULT_COUNT = 10
-
-# ----------------------------------------------------------------------------------------------------------------------
-# Enumerations ---------------------------------------------------------------------------------------------------------
-# ----------------------------------------------------------------------------------------------------------------------
-
-
-class Tool1Choice(StrEnum):
-    """The closed set of values `tool1` accepts, so a bad value fails here rather than downstream."""
-
-    HELLO = "hello"
-    WORLD = "world"
-    EXCLAM = "!"
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Tool parameters ------------------------------------------------------------------------------------------------------
 # ----------------------------------------------------------------------------------------------------------------------
 
-Tool1Input = Annotated[
-    Tool1Choice,
+ArticleTitle = Annotated[
+    str,
     Field(
-        description="Which word to echo back: 'hello', 'world' or '!'.",
-        examples=["hello"],
+        description=(
+            "Exact English Wikipedia article title, not a search phrase: 'Ada Lovelace', not 'who was ada lovelace'."
+        ),
+        examples=["Ada Lovelace"],
+        min_length=1,
+        max_length=200,
     ),
 ]
 
@@ -42,7 +30,9 @@ Tool1Input = Annotated[
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-class OutputPhrase(BaseModel):
-    """What `tool1` returns."""
+class ArticleSummary(BaseModel):
+    """What `wikipedia_summary` returns."""
 
-    returned_phrase: str = Field(description="The sentence built from the chosen word.")
+    title: str = Field(description="The article title as Wikipedia resolved it.")
+    extract: str = Field(description="Plain-text summary of the article, usually two or three sentences.")
+    url: str = Field(description="Canonical desktop URL of the article.")
