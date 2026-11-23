@@ -1,0 +1,50 @@
+name: CI
+
+# Two jobs, because they fail in different ways: the first catches a broken tool or an unformatted
+# file, the second catches an image that builds and then cannot serve.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: lint and test (python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - run: uv sync --locked --python ${{ matrix.python-version }}
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q
+
+  image:
+    name: container image serves
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t mcpsquelette:ci .
+      - name: Run it and wait for the healthcheck
+        run: |
+          docker run -d --name ci -p 8000:8000 -e 'ALLOWED_HOSTS=["localhost"]' mcpsquelette:ci
+          for attempt in $(seq 1 30); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' ci)
+            echo "health: $status"
+            [ "$status" = "healthy" ] && exit 0
+            sleep 3
+          done
+          echo "container never became healthy"; docker logs ci; exit 1
+      - name: Show the logs when something failed above
+        if: failure()
+        run: docker logs ci || true
