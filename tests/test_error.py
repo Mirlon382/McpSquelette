@@ -1,30 +1,52 @@
-"""The error contract: what a caller reads, and what the attributes hold."""
+"""The error contract as a caller experiences it: masked bugs, unmasked AppToolError, retryable."""
+
+import pytest
+from fastmcp import Client, FastMCP
 
 from mcpserver.errors import AppToolError, ErrorCode
 
 
-def test_message_carries_the_code_and_the_reason() -> None:
-    err = AppToolError(ErrorCode.INVALID_INPUT, "`word` must be one of hello, world or !.")
-
-    assert str(err).startswith("[INVALID_INPUT]")
-    assert "`word`" in str(err)
+async def a_bug() -> str:
+    """A tool that forgot the contract."""
+    raise ValueError("internal detail nobody should read")
 
 
-def test_retryable_is_marked_in_the_message() -> None:
-    err = AppToolError(ErrorCode.BACKEND_UNAVAILABLE, "The backend is starting up.", retryable=True)
-
-    assert "[BACKEND_UNAVAILABLE, retryable]" in str(err)
-    assert err.retryable is True
+async def a_known_failure() -> str:
+    """A tool that raised the tool error the caller is meant to act on."""
+    raise AppToolError(ErrorCode.NOT_FOUND, "No note is stored under `topic='gone'`. Call `notes_list`.")
 
 
-def test_attributes_survive_for_tests_and_logging() -> None:
-    err = AppToolError(ErrorCode.NOT_FOUND, "No unit matches that SIREN.")
+def build_server() -> FastMCP:
+    server = FastMCP("contract", mask_error_details=True)
+    server.tool(a_bug)
+    server.tool(a_known_failure)
+    return server
 
-    assert err.code is ErrorCode.NOT_FOUND
-    assert err.retryable is False
+
+async def test_a_bug_is_replaced_by_a_generic_message() -> None:
+    async with Client(build_server()) as client:
+        result = await client.call_tool("a_bug", {}, raise_on_error=False)
+
+    text = result.content[0].text
+    assert result.is_error
+    assert "internal detail" not in text
+    assert "ValueError" not in text
 
 
-def test_it_is_a_tool_error_so_the_message_is_not_masked() -> None:
-    from fastmcp.exceptions import ToolError
+async def test_an_app_tool_error_reaches_the_caller_verbatim() -> None:
+    async with Client(build_server()) as client:
+        result = await client.call_tool("a_known_failure", {}, raise_on_error=False)
 
-    assert isinstance(AppToolError(ErrorCode.INTERNAL_ERROR, "boom"), ToolError)
+    assert "[NOT_FOUND]" in result.content[0].text
+    assert "topic='gone'" in result.content[0].text
+
+
+@pytest.mark.parametrize(
+    ("retryable", "expected"),
+    [(True, "[BACKEND_UNAVAILABLE, retryable]"), (False, "[BACKEND_UNAVAILABLE]")],
+)
+def test_retryability_is_visible_in_the_message(retryable: bool, expected: str) -> None:
+    err = AppToolError(ErrorCode.BACKEND_UNAVAILABLE, "The backend is starting up.", retryable=retryable)
+
+    assert str(err).startswith(expected)
+    assert err.retryable is retryable
